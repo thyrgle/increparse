@@ -42,7 +42,7 @@
 //! | [`Schedule`] | Ordered passes; round `r` uses pass `r`. |
 //! | [`ParseTree`] | Arena of `(span, ctx, status)` nodes; the result of a run. |
 //! | [`Engine`] | Drives rounds to a fixpoint, with cancellation and pluggable parallelism. |
-//! | [`Executor`] | How a round's batch runs: [`SerialExecutor`] (default) or [`RayonExecutor`] (feature `parallel`). |
+//! | [`Executor`] | How a round's batch runs: [`SerialExecutor`] (default) or a rayon-backed executor (feature `parallel`). |
 //! | [`CancelToken`] | Cooperative cancellation at job granularity — built for LSP-style "user typed again" restarts. |
 //!
 //! # Termination by construction

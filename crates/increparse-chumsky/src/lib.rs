@@ -1,5 +1,5 @@
 //! Wrap [chumsky](https://docs.rs/chumsky) parsers in increparse
-//! [`Pass`](increparse::Pass)es.
+//! [`Pass`]es.
 //!
 //! chumsky 0.10 reports spans as [`SimpleSpan`]s relative to the input slice
 //! it parsed; increparse needs *absolute* spans carrying a source revision —
@@ -11,7 +11,7 @@
 //! [`ParseResult`] whose output is the parsed children: each child is a
 //! **slice-relative** [`SimpleSpan`] plus a context value for the next
 //! round. The wrapper converts the result to an
-//! [`Outcome`](increparse::Outcome):
+//! [`Outcome`] (from the core crate):
 //!
 //! * parse succeeded with children → `Outcome::Expand` with rebased
 //!   absolute spans,
@@ -83,7 +83,7 @@ pub struct ChumskyPass<F> {
 
 /// Creates a pass from a closure that parses a slice into [`ChumChildren`].
 ///
-/// chumsky 0.10's [`Parser`] trait is tied to the input lifetime, so parsers
+/// chumsky 0.10's chumsky::Parser trait is tied to the input lifetime, so parsers
 /// are built per call (they are cheap) by a small factory function; the
 /// closure builds one and runs it against the slice:
 ///

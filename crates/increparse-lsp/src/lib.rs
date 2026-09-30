@@ -11,10 +11,10 @@
 //!   `positionEncoding` capability); increparse spans are byte offsets.
 //!   [`LineIndex`] converts between the two, correctly, across multibyte
 //!   text.
-//! * **[`Document`]** — one open file: its text, its [`Session`], the client
+//! * **[`Document`]** — one open file: its text, its [`Session`](increparse::Session), the client
 //!   version, and the negotiated encoding. `didOpen`/`didChange` events go
 //!   in; a run report comes out. Incremental change events are translated
-//!   into byte-range [`Edit`]s so the tree reuses everything the edit did
+//!   into byte-range [`Edit`](increparse::Edit)s so the tree reuses everything the edit did
 //!   not touch.
 //! * **Diagnostics** — walk the settled tree, hand [`Failed`](increparse::Status)
 //!   regions to your language-specific hook, and get back publishable

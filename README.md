@@ -198,11 +198,15 @@ concurrency machinery at all.
 | [`Pass`] | Your parse logic: `(&str, Span, &Ctx) -> Outcome<Ctx>`. |
 | [`Schedule`] | Ordered passes; round `r` uses pass `r`. |
 | [`ParseTree`] | Arena of `(span, ctx, status)` nodes with stable [`NodeId`]s. |
-| [`Engine`] | Drives rounds to a fixpoint. |
+| [`Engine`] | Drives rounds to a fixpoint; rejects contract-violating child spans. |
 | [`Session`] | Long-lived document: edits + re-parses with subtree reuse. |
 | [`Edit`] | One text change: `replace(start, old_end, new_end)`. |
 | [`Outcome`] | `Expand(children)` / `Done` / `Failed`. |
-| [`RunReport`] | Rounds run, work done, failures, fixpoint/cancellation flags. |
+| [`RunReport`] | Rounds run, work done, `Violation`s, fixpoint/cancellation flags. |
+| [`Span`] | Byte range + revision into the source. |
+| [`Status`] / `StatusCounts` | Lifecycle state of a node; per-status totals. |
+| [`NodeId`] | Stable node handle. |
+| [`Executor`] / [`CancelToken`] | Runs a round's batch; cooperative cancellation. |
 
 ## Roadmap
 

@@ -115,8 +115,8 @@ pub struct EngineConfig {
 /// [`ParseTree`] in rounds:
 ///
 /// * **Round `r`** applies `schedule[r]` to every node whose `depth == r`
-///   and whose status is [`Unparsed`](Status::Unparsed) or
-///   [`Failed`](Status::Failed).
+///   and whose status is `Unparsed` or
+///   `Failed`.
 /// * Nodes expanded in round `r` create children at depth `r + 1`; nodes
 ///   that fail are retried at depth `r + 1` by the next pass.
 /// * The run reaches its **fixpoint** when a round finds no ready nodes, or

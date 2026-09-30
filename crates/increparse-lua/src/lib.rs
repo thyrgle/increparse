@@ -195,7 +195,7 @@ impl Pass for LuaPass {
 /// A language defined by a Lua configuration file.
 ///
 /// Build with [`LuaLanguage::from_path`] and hand it to
-/// [`increparse_lsp::serve`](increparse_lsp::serve):
+/// increparse_lsp::serve:
 ///
 /// ```no_run
 /// fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

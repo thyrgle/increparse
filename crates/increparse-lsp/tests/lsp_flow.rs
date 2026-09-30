@@ -100,7 +100,14 @@ fn change(range: Option<(u32, u32, u32, u32)>, text: &str) -> TextDocumentConten
 
 fn open(text: &str) -> Document<Ctx> {
     let uri: Uri = "file:///test.txt".parse().unwrap();
-    Document::open(uri, 0, "".into(), text.into(), PositionEncoding::Utf16, Ctx::File)
+    Document::open(
+        uri,
+        0,
+        "".into(),
+        text.into(),
+        PositionEncoding::Utf16,
+        Ctx::File,
+    )
 }
 
 #[test]

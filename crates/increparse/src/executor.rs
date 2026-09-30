@@ -22,7 +22,7 @@ use crate::outcome::Outcome;
 /// # Provided implementations
 ///
 /// * [`SerialExecutor`] — runs jobs one at a time (default, zero cost).
-/// * [`RayonExecutor`] — runs jobs on a rayon thread pool (requires the
+/// * The rayon-backed executor — runs jobs on a thread pool (requires the
 ///   `parallel` feature).
 pub trait Executor: Send + Sync {
     /// Executes `jobs` with `run`, honouring `cancel` at job granularity.

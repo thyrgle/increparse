@@ -15,3 +15,11 @@ rayon = { version = "1.10", optional = true }
 [features]
 default = []
 parallel = ["dep:rayon"]
+
+[dev-dependencies]
+criterion = "0.8.2"
+proptest = "1.11.0"
+
+[[bench]]
+name = "parse"
+harness = false

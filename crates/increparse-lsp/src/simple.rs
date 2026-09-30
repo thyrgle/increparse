@@ -223,10 +223,7 @@ impl<C: Clone + PartialEq + Send + 'static> SimpleLanguage<C> {
     /// diagnostics published there.
     pub fn code_action_fn(
         mut self,
-        f: impl Fn(&Document<C>, lsp_types::Range) -> Vec<lsp_types::CodeAction>
-            + Send
-            + Sync
-            + 'static,
+        f: impl Fn(&Document<C>, lsp_types::Range) -> Vec<lsp_types::CodeAction> + Send + Sync + 'static,
     ) -> Self {
         self.code_action_fn = Some(Arc::new(f));
         self

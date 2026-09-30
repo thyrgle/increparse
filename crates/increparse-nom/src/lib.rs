@@ -1,4 +1,4 @@
-//! Wrap [`nom`] parsers in increparse [`Pass`](increparse::Pass)es.
+//! Wrap [`nom`] parsers in increparse [`Pass`]es.
 //!
 //! nom reports offsets relative to the input slice it was handed; increparse
 //! needs *absolute* spans carrying a source revision — and the incremental
@@ -11,7 +11,7 @@
 //! `IResult` whose output is the parsed children: each child is a
 //! **slice-relative** `Range<usize>` plus a context value for the next
 //! round. The wrapper converts the result to an
-//! [`Outcome`](increparse::Outcome):
+//! [`Outcome`] (from the core crate):
 //!
 //! * `Ok(children)` → `Outcome::Expand` with rebased absolute spans,
 //! * `Ok(vec![])` → `Outcome::Done` (nothing left to parse in the region),
