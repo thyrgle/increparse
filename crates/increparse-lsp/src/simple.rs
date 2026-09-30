@@ -59,7 +59,19 @@ pub struct SimpleLanguage<C> {
     definition_fn: Option<Arc<DefinitionFn<C>>>,
     completion_fn: Option<Arc<CompletionFn<C>>>,
     code_action_fn: Option<Arc<CodeActionFn<C>>>,
+    folding_range_fn: Option<Arc<FoldingRangeFn<C>>>,
+    document_highlight_fn: Option<Arc<DocumentHighlightFn<C>>>,
 }
+
+/// The type of the [`SimpleLanguage::folding_range_fn`] hook: folding
+/// ranges for the whole document.
+pub type FoldingRangeFn<C> =
+    dyn Fn(&Document<C>) -> Vec<lsp_types::FoldingRange> + Send + Sync;
+
+/// The type of the [`SimpleLanguage::document_highlight_fn`] hook:
+/// highlight ranges for the token at the byte offset.
+pub type DocumentHighlightFn<C> =
+    dyn Fn(&Document<C>, usize) -> Vec<lsp_types::DocumentHighlight> + Send + Sync;
 
 /// The type of the [`SimpleLanguage::describe_fn`] hook: describe a
 /// context in one sentence and the skeleton turns it into hover contents.
@@ -133,6 +145,8 @@ impl<C: Clone + PartialEq + Send + 'static> SimpleLanguage<C> {
             definition_fn: None,
             completion_fn: None,
             code_action_fn: None,
+            folding_range_fn: None,
+            document_highlight_fn: None,
         }
     }
 
@@ -253,6 +267,14 @@ impl<C: Clone + PartialEq + Send + Sync + 'static> Language<C> for SimpleLanguag
         self.code_action_fn.is_some()
     }
 
+    fn supports_folding_ranges(&self) -> bool {
+        self.folding_range_fn.is_some()
+    }
+
+    fn supports_document_highlight(&self) -> bool {
+        self.document_highlight_fn.is_some()
+    }
+
     fn code_action(
         &self,
         doc: &Document<C>,
@@ -260,6 +282,24 @@ impl<C: Clone + PartialEq + Send + Sync + 'static> Language<C> for SimpleLanguag
     ) -> Vec<lsp_types::CodeAction> {
         match &self.code_action_fn {
             Some(f) => f(doc, range),
+            None => Vec::new(),
+        }
+    }
+
+    fn folding_ranges(&self, doc: &Document<C>) -> Vec<lsp_types::FoldingRange> {
+        match &self.folding_range_fn {
+            Some(f) => f(doc),
+            None => Vec::new(),
+        }
+    }
+
+    fn document_highlight(
+        &self,
+        doc: &Document<C>,
+        offset: usize,
+    ) -> Vec<lsp_types::DocumentHighlight> {
+        match &self.document_highlight_fn {
+            Some(f) => f(doc, offset),
             None => Vec::new(),
         }
     }

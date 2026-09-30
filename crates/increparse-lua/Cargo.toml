@@ -11,7 +11,7 @@ categories = ["parsing"]
 
 [dependencies]
 increparse = { path = "../increparse", version = "0.1.0" }
-increparse-lsp = { path = "../increparse-lsp", version = "0.3.0" }
+increparse-lsp = { path = "../increparse-lsp" }
 lsp-types = "0.97"
 mlua = { version = "0.12", features = ["lua54", "send", "vendored"] }
 

@@ -174,6 +174,40 @@ pub trait Language<C: Clone + PartialEq + Send + 'static>: Send + Sync + 'static
         Vec::new()
     }
 
+    /// Runtime hook for folding-range support; defaults to `false`.
+    ///
+    /// Folding ranges map parse-tree regions onto foldable sections in
+    /// the editor — the most natural LSP feature for an engine whose
+    /// whole model is a region tree.
+    fn supports_folding_ranges(&self) -> bool {
+        false
+    }
+
+    /// Folding ranges for the document — one per region the language
+    /// server wants collapsible.
+    fn folding_ranges(&self, doc: &Document<C>) -> Vec<lsp_types::FoldingRange> {
+        let _ = doc;
+        Vec::new()
+    }
+
+    /// Runtime hook for document-highlight support; defaults to `false`.
+    ///
+    /// Highlights all occurrences of the token at the cursor — useful
+    /// for showing where a variable, class, or rule applies.
+    fn supports_document_highlight(&self) -> bool {
+        false
+    }
+
+    /// Document highlights for the token at the cursor position.
+    fn document_highlight(
+        &self,
+        doc: &Document<C>,
+        offset: usize,
+    ) -> Vec<lsp_types::DocumentHighlight> {
+        let _ = (doc, offset);
+        Vec::new()
+    }
+
     /// Hover contents for the byte `offset` in `doc`, or `None`.
     ///
     /// The skeleton converts the client's position (in the negotiated
@@ -218,6 +252,10 @@ where
             .then(|| lsp_types::CompletionOptions {
                 ..Default::default()
             }),
+        folding_range_provider: Some(lsp_types::FoldingRangeProviderCapability::Simple(
+            language.supports_folding_ranges(),
+        )),
+        document_highlight_provider: Some(OneOf::Left(language.supports_document_highlight())),
         code_action_provider: Some(lsp_types::CodeActionProviderCapability::Simple(
             language.supports_code_actions(),
         )),
@@ -331,6 +369,27 @@ where
                             .and_then(|doc| language.completion(doc, doc.offset(tdp.position)));
                         connection.sender.send(lsp_server::Message::Response(
                             lsp_server::Response::new_ok(req.id, completions),
+                        ))?;
+                    }
+                    "textDocument/foldingRange" if language.supports_folding_ranges() => {
+                        let params: lsp_types::FoldingRangeParams = serde_json::from_value(req.params)?;
+                        let ranges = documents
+                            .get(&params.text_document.uri)
+                            .map(|doc| language.folding_ranges(doc))
+                            .unwrap_or_default();
+                        connection.sender.send(lsp_server::Message::Response(
+                            lsp_server::Response::new_ok(req.id, ranges),
+                        ))?;
+                    }
+                    "textDocument/documentHighlight" if language.supports_document_highlight() => {
+                        let params: lsp_types::DocumentHighlightParams = serde_json::from_value(req.params)?;
+                        let tdp = &params.text_document_position_params;
+                        let highlights = documents
+                            .get(&tdp.text_document.uri)
+                            .map(|doc| language.document_highlight(doc, doc.offset(tdp.position)))
+                            .unwrap_or_default();
+                        connection.sender.send(lsp_server::Message::Response(
+                            lsp_server::Response::new_ok(req.id, highlights),
                         ))?;
                     }
                     "textDocument/codeAction" if language.supports_code_actions() => {
