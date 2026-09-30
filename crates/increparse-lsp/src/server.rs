@@ -372,7 +372,8 @@ where
                         ))?;
                     }
                     "textDocument/foldingRange" if language.supports_folding_ranges() => {
-                        let params: lsp_types::FoldingRangeParams = serde_json::from_value(req.params)?;
+                        let params: lsp_types::FoldingRangeParams =
+                            serde_json::from_value(req.params)?;
                         let ranges = documents
                             .get(&params.text_document.uri)
                             .map(|doc| language.folding_ranges(doc))
@@ -382,7 +383,8 @@ where
                         ))?;
                     }
                     "textDocument/documentHighlight" if language.supports_document_highlight() => {
-                        let params: lsp_types::DocumentHighlightParams = serde_json::from_value(req.params)?;
+                        let params: lsp_types::DocumentHighlightParams =
+                            serde_json::from_value(req.params)?;
                         let tdp = &params.text_document_position_params;
                         let highlights = documents
                             .get(&tdp.text_document.uri)

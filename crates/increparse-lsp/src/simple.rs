@@ -65,8 +65,7 @@ pub struct SimpleLanguage<C> {
 
 /// The type of the [`SimpleLanguage::folding_range_fn`] hook: folding
 /// ranges for the whole document.
-pub type FoldingRangeFn<C> =
-    dyn Fn(&Document<C>) -> Vec<lsp_types::FoldingRange> + Send + Sync;
+pub type FoldingRangeFn<C> = dyn Fn(&Document<C>) -> Vec<lsp_types::FoldingRange> + Send + Sync;
 
 /// The type of the [`SimpleLanguage::document_highlight_fn`] hook:
 /// highlight ranges for the token at the byte offset.
