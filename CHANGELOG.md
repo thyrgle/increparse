@@ -8,6 +8,14 @@ semver.
 
 ### Added
 
+- `increparse-lsp` 0.5.0: `BackgroundRunner` — parse one document on a
+  worker thread with burst coalescing, session reuse across runs, root
+  context change detection, and cooperative cancellation.
+- `increparse-lsp` 0.4.0: `textDocument/foldingRange` and
+  `textDocument/documentHighlight` support on the `Language` trait and
+  `SimpleLanguage` builder hooks (`folding_range_fn`, `document_highlight_fn`),
+  with capability advertisement in the `serve()` skeleton.
+
 - Criterion benchmarks (`benches/parse.rs`): cold parse of a 2,000-line
   corpus, in-place re-parse, and mid-file edit re-parse.
 - Property-based invariant tests (`proptest`): runs terminate without

@@ -19,6 +19,9 @@
 //! * **Diagnostics** — walk the settled tree, hand [`Failed`](increparse::Status)
 //!   regions to your language-specific hook, and get back publishable
 //!   `Diagnostic`s with correctly converted ranges.
+//! * **[`BackgroundRunner`]** — parse on a worker thread with coalescing and
+//!   cooperative cancellation, for when documents get big enough that the
+//!   `serve` loop must not block on them.
 //!
 //! # Examples
 //!
@@ -64,6 +67,8 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod background;
+
 mod diagnostics;
 mod document;
 mod encoding;
@@ -71,6 +76,7 @@ mod line_index;
 mod server;
 mod simple;
 
+pub use background::BackgroundRunner;
 pub use diagnostics::{diagnostics, DiagnosticsOptions, FailedNode};
 pub use document::Document;
 pub use encoding::PositionEncoding;
@@ -85,9 +91,9 @@ pub use simple::{
 /// prelude).
 pub mod prelude {
     pub use crate::{
-        diagnostics, serve, serve_on, CompletionFn, DefinitionFn, DescribeFn, DiagnosticsOptions,
-        Document, Documents, ExtraDiagnosticsFn, FailedNode, HoverFn, LabelFn, Language, LineIndex,
-        NodeLabel, PositionEncoding, SimpleLanguage, SymbolsFn,
+        diagnostics, serve, serve_on, BackgroundRunner, CompletionFn, DefinitionFn, DescribeFn,
+        DiagnosticsOptions, Document, Documents, ExtraDiagnosticsFn, FailedNode, HoverFn, LabelFn,
+        Language, LineIndex, NodeLabel, PositionEncoding, SimpleLanguage, SymbolsFn,
     };
     pub use increparse::prelude::*;
 }

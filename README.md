@@ -159,14 +159,16 @@ layers:
   (engine, root context, diagnostics hook, optional `label_fn`/`symbols_fn`
   for the outline) and get a complete server: initialize, document
   bookkeeping, incremental change translation, diagnostics publishing,
-  symbol dispatch, and a structurally deadlock-free shutdown. Runs on stdio
-  via `lsp-server`; `serve_on()` accepts any connection you own. Power users
-  can implement the `Language` trait directly.
+  symbol dispatch, folding ranges, document highlight, and a structurally
+  deadlock-free shutdown. Runs on stdio via `lsp-server`; `serve_on()`
+  accepts any connection you own. Power users can implement the `Language`
+  trait directly.
 - **Framework-agnostic pieces** — `LineIndex`/`PositionEncoding` (byte ↔
   UTF-8/16/32 positions), `Document<C>` (didChange events → byte `Edit`s →
-  one engine run, with tree reuse), and `diagnostics()` — for when you'd
-  rather write the loop yourself (or use another server framework; only the
-  `serve()` layer needs `lsp-server`).
+  one engine run, with tree reuse), `diagnostics()`, and `BackgroundRunner`
+  (parse on a worker thread with coalescing and cancellation) — for when
+  you'd rather write the loop yourself (or use another server framework;
+  only the `serve()` layer needs `lsp-server`).
 
 `crates/increparse-lsp/examples/mini_lang_server.rs` is a complete small
 server (diagnostics + document symbols) with an end-to-end stdio smoke test
@@ -184,11 +186,12 @@ A round's batch of nodes goes through the [`Executor`] trait:
 - [`RayonExecutor`] — jobs run on a rayon thread pool; enable the `parallel`
   feature. Useful for batch compilation; results still merge in job order.
 
-For LSP-style interactive use, run the engine on a background thread with a
-[`CancelToken`]: when the user types again, cancel the run (the engine checks
-at job granularity), invalidate the subtrees overlapping the edit, and start a
-fresh run. The responsiveness comes from cancellation *between batches*, not
-from intra-round parallelism — which is why the default build has no
+For LSP-style interactive use, [`BackgroundRunner`] is the ready-made
+version of this pattern: it owns a worker thread and a `Session`, coalesces
+bursts of submissions into the newest, reuses everything an edit did not
+touch, and cancels in-flight runs on request (the engine checks at job
+granularity). The responsiveness comes from cancellation *between batches*,
+not from intra-round parallelism — which is why the default build has no
 concurrency machinery at all.
 
 ## API tour
@@ -207,13 +210,12 @@ concurrency machinery at all.
 | [`Status`] / `StatusCounts` | Lifecycle state of a node; per-status totals. |
 | [`NodeId`] | Stable node handle. |
 | [`Executor`] / [`CancelToken`] | Runs a round's batch; cooperative cancellation. |
+| [`BackgroundRunner`] | Parse on a worker thread: coalescing, session reuse, cancellation. |
 
 ## Roadmap
 
 - Finer-grained reuse hooks (e.g. matching by user-supplied keys instead of
   `PartialEq`).
-- Optional background-run helper for LSP documents (request_parse /
-  on_settled on a worker thread).
 
 ## Status
 
@@ -234,5 +236,6 @@ v0.1.0 — core semantics are settling; the API may still change.
 [`SerialExecutor`]: https://docs.rs/increparse/latest/increparse/struct.SerialExecutor.html
 [`RayonExecutor`]: https://docs.rs/increparse/latest/increparse/struct.RayonExecutor.html
 [`CancelToken`]: https://docs.rs/increparse/latest/increparse/struct.CancelToken.html
+[`BackgroundRunner`]: https://docs.rs/increparse-lsp/latest/increparse_lsp/background/struct.BackgroundRunner.html
 [`LineIndex`]: https://docs.rs/increparse-lsp/latest/increparse_lsp/struct.LineIndex.html
 [`PositionEncoding`]: https://docs.rs/increparse-lsp/latest/increparse_lsp/enum.PositionEncoding.html
