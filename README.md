@@ -180,7 +180,7 @@ and runs it in VS Code and Neovim.
 
 ## Compiler design
 
-memjs ([`thyrgle/memjs`](https://github.com/thyrgle/memjs) — developed
+memjs ([`thyrgle/linjs`](https://github.com/thyrgle/linjs) — developed
 here, now its own repository) is the compiler-design pilot: a
 JavaScript subset — closures, arrows, objects with shorthand, `var` /
 `let` / `const` with real scoping and hoisting semantics,
