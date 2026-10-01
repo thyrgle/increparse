@@ -19,18 +19,23 @@
 //! assert_eq!(String::from_utf8(out).unwrap(), "3\n");
 //! ```
 //!
-//! # The M1 subset
+//! # The M1+M2 subset
 //!
-//! `let` / `const`, assignment (including compound and `++` / `--`),
-//! `if` / `else`, `while`, `for`, `for..of`, `break` / `continue` /
-//! `return`, function declarations, arrow functions and closures, calls,
-//! member and index access, ternaries, `typeof`, arrays with `length`,
+//! `let` / `const` / `var` (with JavaScript's scoping and hoisting
+//! semantics: `var` is function-scoped, `let` loop variables get
+//! per-iteration bindings), assignment (including compound and
+//! `++` / `--`), `if` / `else`, `while`, `for`, `for..of`, `for..in`,
+//! `break` / `continue` / `return`, function declarations, arrow
+//! functions and closures, calls, member and index access, object
+//! literals with shorthand, ternaries, `typeof`, arrays with `length`,
 //! `push`, `pop`, `map`, and `filter`, strings, f64 numbers,
 //! `undefined`, `null`, truthiness, `===`, and `==` with coercion.
+//! `console.log` formats containers the way Node does, and the test
+//! suite verifies every fixture against Node byte for byte.
 //!
 //! Divergences from JavaScript are documented in [`interp`]; the
-//! roadmap — objects, then `@own` / `@ref` memory annotations, then
-//! annotation inference — is in the workspace README.
+//! roadmap — `@own` / `@ref` memory annotations, then annotation
+//! inference — is in the workspace README.
 
 pub mod ast;
 pub mod interp;

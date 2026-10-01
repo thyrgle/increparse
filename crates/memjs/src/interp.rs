@@ -5,12 +5,14 @@
 //! in source order. Closures work through the environment chain on
 //! [`value::Env`]; array methods dispatch with their receiver.
 //!
-//! Documented M1 divergences from JavaScript:
-//! * `for (let i ...)` closures capture one shared loop variable —
-//!   capture the value explicitly (`const j = i`) for per-iteration
-//!   snapshots.
+//! Documented divergences from JavaScript:
 //! * No exceptions (`try`/`catch`): runtime errors abort the program.
 //! * `t op= v` evaluates the target twice.
+//! * Object literals support `key: value` and shorthand `key`, but not
+//!   method shorthand, computed keys, or getters; there is no `delete`.
+//! * `in` exists only in `for..in`, not as an operator.
+//! * `console.log` inspects containers like Node, but prints very deep
+//!   structures fully instead of truncating to `[Array]` / `[Object]`.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -78,6 +80,11 @@ impl<'o> Interp<'o> {
         }
         for item in items {
             if let Item::Stmt(stmt) = item {
+                hoist_vars(&global, stmt);
+            }
+        }
+        for item in items {
+            if let Item::Stmt(stmt) = item {
                 self.exec_stmt(&global, stmt)?;
             }
         }
@@ -140,6 +147,16 @@ impl<'o> Interp<'o> {
                 }
                 Ok(Ctl::Val)
             }
+            Stmt::Var { decls } => {
+                for (name, init) in decls {
+                    let value = match init {
+                        Some(e) => self.eval(env, e)?,
+                        None => Value::Undefined,
+                    };
+                    set_var(env, name, value);
+                }
+                Ok(Ctl::Val)
+            }
             Stmt::Expr(expr) => {
                 self.eval(env, expr)?;
                 Ok(Ctl::Val)
@@ -173,16 +190,41 @@ impl<'o> Interp<'o> {
                 if let Some(init) = init {
                     self.exec_stmt(&loop_env, init)?;
                 }
+                // `let` loop variables get a fresh binding per iteration
+                // — closures in the body capture this iteration's value,
+                // as JavaScript specifies. `var` bindings live in the
+                // function frame and are shared.
+                let let_names: Vec<String> = match init.as_deref() {
+                    Some(Stmt::Let { decls, .. }) => {
+                        decls.iter().map(|(name, _)| name.clone()).collect()
+                    }
+                    _ => Vec::new(),
+                };
                 loop {
                     if let Some(cond) = cond {
                         if !self.eval(&loop_env, cond)?.is_truthy() {
                             break;
                         }
                     }
-                    match self.exec_stmt(&loop_env, body)? {
+                    let iter_env = Env::new(Some(
+                        loop_env.parent.clone().unwrap_or_else(|| loop_env.clone()),
+                    ));
+                    for name in &let_names {
+                        if let Some(v) = loop_env.get(name) {
+                            iter_env.declare(name, v, false);
+                        }
+                    }
+                    match self.exec_stmt(&iter_env, body)? {
                         Ctl::Break => break,
                         Ctl::Return(v) => return Ok(Ctl::Return(v)),
                         _ => {}
+                    }
+                    // The body may have mutated the iteration's binding;
+                    // sync it back before the step runs.
+                    for name in &let_names {
+                        if let Some(v) = iter_env.get(name) {
+                            let _ = loop_env.set(name, v);
+                        }
                     }
                     if let Some(step) = step {
                         self.eval(&loop_env, step)?;
@@ -208,6 +250,40 @@ impl<'o> Interp<'o> {
                 for item in items {
                     let iter_env = Env::new(Some(env.clone()));
                     iter_env.declare(name, item, *is_const);
+                    match self.exec_stmt(&iter_env, body)? {
+                        Ctl::Break => break,
+                        Ctl::Return(v) => return Ok(Ctl::Return(v)),
+                        _ => {}
+                    }
+                }
+                Ok(Ctl::Val)
+            }
+            Stmt::ForIn {
+                name,
+                is_const,
+                iterable,
+                body,
+            } => {
+                let target = self.eval(env, iterable)?;
+                let keys: Vec<Value> = match &target {
+                    Value::Obj(obj) => obj
+                        .borrow()
+                        .iter()
+                        .map(|(k, _)| Value::Str(Rc::from(k.as_str())))
+                        .collect(),
+                    Value::Arr(arr) => (0..arr.borrow().len())
+                        .map(|i| Value::Str(Rc::from(crate::value::fmt_number(i as f64).as_str())))
+                        .collect(),
+                    Value::Str(s) => (0..s.chars().count())
+                        .map(|i| Value::Str(Rc::from(crate::value::fmt_number(i as f64).as_str())))
+                        .collect(),
+                    // JavaScript: for-in over other types iterates
+                    // nothing, without error.
+                    _ => Vec::new(),
+                };
+                for key in keys {
+                    let iter_env = Env::new(Some(env.clone()));
+                    iter_env.declare(name, key, *is_const);
                     match self.exec_stmt(&iter_env, body)? {
                         Ctl::Break => break,
                         Ctl::Return(v) => return Ok(Ctl::Return(v)),
@@ -248,6 +324,17 @@ impl<'o> Interp<'o> {
                 }
                 Ok(Value::Arr(Rc::new(RefCell::new(out))))
             }
+            Expr::Obj(entries) => {
+                let mut map: Vec<(String, Value)> = Vec::with_capacity(entries.len());
+                for entry in entries {
+                    let value = self.eval(env, &entry.value)?;
+                    match map.iter_mut().find(|(k, _)| *k == entry.key) {
+                        Some(slot) => slot.1 = value,
+                        None => map.push((entry.key.clone(), value)),
+                    }
+                }
+                Ok(Value::Obj(Rc::new(RefCell::new(map))))
+            }
             Expr::Unary(op, e) => {
                 let v = self.eval(env, e)?;
                 Ok(match op {
@@ -258,7 +345,7 @@ impl<'o> Interp<'o> {
                         Value::Str(_) => Value::Str("string".into()),
                         Value::Bool(_) => Value::Str("boolean".into()),
                         Value::Undefined => Value::Str("undefined".into()),
-                        Value::Null | Value::Arr(_) => Value::Str("object".into()),
+                        Value::Null | Value::Arr(_) | Value::Obj(_) => Value::Str("object".into()),
                         Value::Func(_) => Value::Str("function".into()),
                     },
                 })
@@ -317,7 +404,12 @@ impl<'o> Interp<'o> {
                                 line.push(' ');
                             }
                             let v = self.eval(env, a)?;
-                            line.push_str(&v.to_display());
+                            // Containers print Node-style; top-level
+                            // scalars print raw.
+                            line.push_str(&match v {
+                                Value::Arr(_) | Value::Obj(_) | Value::Func(_) => v.inspect(),
+                                other => other.to_display(),
+                            });
                         }
                         writeln!(self.out, "{line}")
                             .map_err(|e| bail(format!("write failed: {e}")))?;
@@ -468,7 +560,7 @@ impl<'o> Interp<'o> {
                 env: def_env,
                 ..
             } => {
-                let call_env = Env::new(Some(def_env.clone()));
+                let call_env = Env::function_scope(Some(def_env.clone()));
                 for (i, p) in params.iter().enumerate() {
                     call_env.declare(p, argv.get(i).cloned().unwrap_or(Value::Undefined), false);
                 }
@@ -476,6 +568,9 @@ impl<'o> Interp<'o> {
                     FnBody::Expr(expr) => self.eval(&call_env, expr),
                     FnBody::Block(stmts) => {
                         self.hoist_fns(&call_env, stmts);
+                        for stmt in stmts {
+                            hoist_vars(&call_env, stmt);
+                        }
                         for stmt in stmts {
                             match self.exec_stmt(&call_env, stmt)? {
                                 Ctl::Val => {}
@@ -489,6 +584,58 @@ impl<'o> Interp<'o> {
                 }
             }
         }
+    }
+}
+
+/// Registers `var` declarations in the nearest function frame before
+/// execution reaches them (hoisting): scans `stmt` recursively through
+/// control-flow structures, but never into nested functions.
+fn hoist_vars(frame: &Rc<Env>, stmt: &Stmt) {
+    match stmt {
+        Stmt::Var { decls } => {
+            for (name, _) in decls {
+                if !frame.declares_locally(name) {
+                    frame.declare(name, Value::Undefined, false);
+                }
+            }
+        }
+        Stmt::Block(stmts) => {
+            for stmt in stmts {
+                hoist_vars(frame, stmt);
+            }
+        }
+        Stmt::If(_, then, els) => {
+            hoist_vars(frame, then);
+            if let Some(els) = els {
+                hoist_vars(frame, els);
+            }
+        }
+        Stmt::While(_, body) => hoist_vars(frame, body),
+        Stmt::For { init, body, .. } => {
+            if let Some(init) = init {
+                hoist_vars(frame, init);
+            }
+            hoist_vars(frame, body);
+        }
+        Stmt::ForOf { body, .. } | Stmt::ForIn { body, .. } => hoist_vars(frame, body),
+        _ => {}
+    }
+}
+
+/// Assigns to a `var`: walks out to the nearest function-scope frame and
+/// updates (or creates) the binding there.
+fn set_var(env: &Rc<Env>, name: &str, value: Value) {
+    if env.is_function_scope {
+        if env.declares_locally(name) {
+            let _ = env.set(name, value);
+        } else {
+            env.declare(name, value, false);
+        }
+        return;
+    }
+    match &env.parent {
+        Some(parent) => set_var(parent, name, value),
+        None => env.declare(name, value, false),
     }
 }
 
@@ -539,7 +686,25 @@ fn binary(op: BinOp, lv: Value, rv: Value) -> Value {
     }
 }
 
+/// The string key for an object index, per JavaScript coercion:
+/// `obj[1]` is `obj["1"]`.
+fn obj_key(index: &Value) -> Option<String> {
+    match index {
+        Value::Str(s) => Some(s.to_string()),
+        Value::Num(n) => Some(crate::value::fmt_number(*n)),
+        _ => None,
+    }
+}
+
 fn index_get(obj: &Value, index: &Value) -> Value {
+    if let (Value::Obj(obj), Some(key)) = (obj, obj_key(index)) {
+        return obj
+            .borrow()
+            .iter()
+            .find(|(k, _)| k == &key)
+            .map(|(_, v)| v.clone())
+            .unwrap_or(Value::Undefined);
+    }
     match (obj, index) {
         (Value::Arr(arr), i) => match i {
             Value::Num(n) if n.fract() == 0.0 && *n >= 0.0 => arr
@@ -548,6 +713,14 @@ fn index_get(obj: &Value, index: &Value) -> Value {
                 .cloned()
                 .unwrap_or(Value::Undefined),
             Value::Str(s) if s.as_ref() == "length" => Value::Num(arr.borrow().len() as f64),
+            Value::Str(s) => match s.parse::<f64>() {
+                Ok(n) if n.fract() == 0.0 && n >= 0.0 => arr
+                    .borrow()
+                    .get(n as usize)
+                    .cloned()
+                    .unwrap_or(Value::Undefined),
+                _ => Value::Undefined,
+            },
             _ => Value::Undefined,
         },
         (Value::Str(s), Value::Num(n)) if n.fract() == 0.0 && *n >= 0.0 => s
@@ -563,6 +736,14 @@ fn index_get(obj: &Value, index: &Value) -> Value {
 }
 
 fn index_set(obj: &Value, index: &Value, value: Value) {
+    if let (Value::Obj(obj), Some(key)) = (obj, obj_key(index)) {
+        let mut obj = obj.borrow_mut();
+        match obj.iter_mut().find(|(k, _)| *k == key) {
+            Some(slot) => slot.1 = value,
+            None => obj.push((key, value)),
+        }
+        return;
+    }
     if let (Value::Arr(arr), Value::Num(n)) = (obj, index) {
         if n.fract() == 0.0 && *n >= 0.0 {
             let mut arr = arr.borrow_mut();
@@ -585,6 +766,8 @@ fn member_set(obj: &Value, prop: &str, value: Value) {
             if n >= 0.0 {
                 arr.borrow_mut().truncate(n as usize);
             }
+            return;
         }
     }
+    index_set(obj, &Value::Str(Rc::from(prop)), value);
 }

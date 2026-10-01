@@ -117,6 +117,35 @@ fn stmt_str(out: &mut String, stmt: &Stmt, level: usize) {
             stmt_as_block(out, body, level);
             out.push('\n');
         }
+        Stmt::Var { decls } => {
+            out.push_str("var ");
+            for (i, (name, init)) in decls.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                out.push_str(name);
+                if let Some(init) = init {
+                    out.push_str(" = ");
+                    expr_str(out, init);
+                }
+            }
+            out.push_str(";\n");
+        }
+        Stmt::ForIn {
+            name,
+            is_const,
+            iterable,
+            body,
+        } => {
+            out.push_str("for (");
+            out.push_str(if *is_const { "const " } else { "let " });
+            out.push_str(name);
+            out.push_str(" in ");
+            expr_str(out, iterable);
+            out.push_str(") ");
+            stmt_as_block(out, body, level);
+            out.push('\n');
+        }
         Stmt::Block(stmts) => {
             block_str(out, stmts, level);
             out.push('\n');
@@ -284,6 +313,18 @@ fn expr_str(out: &mut String, expr: &Expr) {
             }
             out.push(')');
         }
+        Expr::Obj(entries) => {
+            out.push('{');
+            for (i, entry) in entries.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                out.push_str(&codegen_key(&entry.key));
+                out.push_str(": ");
+                expr_str(out, &entry.value);
+            }
+            out.push('}');
+        }
         Expr::Ternary(cond, then, els) => {
             out.push('(');
             expr_str(out, cond);
@@ -329,6 +370,36 @@ fn expr_str(out: &mut String, expr: &Expr) {
     }
 }
 
+/// Object keys print bare when they are valid identifiers or plain
+/// digit runs; anything else prints as a quoted string (a key like
+/// `with space` is invalid JavaScript unquoted).
+fn codegen_key(key: &str) -> String {
+    let ident_shaped = !key.is_empty()
+        && key
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '$')
+        && key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+    let numeric = !key.is_empty() && key.chars().all(|c| c.is_ascii_digit());
+    if ident_shaped || numeric {
+        key.to_string()
+    } else {
+        let mut out = String::with_capacity(key.len() + 2);
+        out.push('"');
+        for c in key.chars() {
+            match c {
+                '"' => out.push_str("\\\""),
+                '\\' => out.push_str("\\\\"),
+                c => out.push(c),
+            }
+        }
+        out.push('"');
+        out
+    }
+}
+
 fn target_str(out: &mut String, target: &Target) {
     match target {
         Target::Ident(name) => out.push_str(name),
@@ -368,7 +439,8 @@ fn expr_prec(e: &Expr) -> Option<u8> {
         | Expr::Null
         | Expr::Undefined
         | Expr::Ident(_)
-        | Expr::Array(_) => Some(20),
+        | Expr::Array(_)
+        | Expr::Obj(_) => Some(20),
         Expr::Index(..) | Expr::Member(..) | Expr::Call(..) => Some(17),
         Expr::Unary(..) => Some(9),
         Expr::Binary(op, ..) => Some(bin_prec(op)),

@@ -181,9 +181,10 @@ and runs it in VS Code and Neovim.
 ## Compiler design
 
 memjs ([`crates/memjs`](crates/memjs)) is the compiler-design pilot: a
-JavaScript subset — closures, arrows, arrays with `map`/`filter`,
-`for`/`for..of`, truthiness, `==` and `===` — built directly on the
-engine. One pass segments a file into top-level items and parses each
+JavaScript subset — closures, arrows, objects with shorthand, `var` /
+`let` / `const` with real scoping and hoisting semantics,
+`for`/`for..of`/`for..in`, arrays with `map`/`filter`, truthiness,
+`==` and `===` — built directly on the engine. One pass segments a file into top-level items and parses each
 item where it stands; the ASTs ride in the tree as contexts; a
 content-keyed cache keeps untouched items pointer-identical across
 edits, so an edit to one function re-parses only that function. A
@@ -195,9 +196,9 @@ It is also the working sketch of the two patterns a real compiler
 front-end needs here: parse inside the pass, analyze outside it (scope
 and cross-function checks are consumer walks over the settled tree,
 since pass context flows down but not up), and carry language payloads
-in the context (`Ctx::Fn(Arc<FnDef>)`). The roadmap: objects, then
-`@own`/`@ref` comment annotations that route values through per-
-activation arenas instead of the heap, then annotation inference.
+in the context (`Ctx::Fn(Arc<FnDef>)`). The roadmap: `@own`/`@ref` comment
+annotations that route values through per-activation arenas instead of
+the heap, then annotation inference.
 
 ## Executors and cancellation
 

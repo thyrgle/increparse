@@ -46,6 +46,31 @@ const FIXTURES: &[&str] = &[
     "let a = [1]; a[0]++; a[0] += 9; console.log(a[0]);",
     // strings via addition
     r#"console.log("n=" + 1 + 2);"#,
+    // ---- M2: objects ----
+    "const o = { a: 1, b: \"two\" }; o.c = 3; console.log(o.a, o.b, o.c, o.missing);",
+    r#"const a = 1; const o = { a, nested: { x: [1, 2] } }; console.log(o);"#,
+    r#"console.log({ a: 1, b: "x" });"#,
+    "console.log([]);",
+    "console.log({});",
+    "console.log([1, 2]);",
+    r#"console.log(["x", "it\u0027s"]);"#,
+    "console.log([1, [2, [3]]]);",
+    r#"console.log({ outer: { inner: 1 }, list: [1, "two", null, true] });"#,
+    r#"const counts = { one: 1, two: 2 }; let total = 0; for (const k in counts) { total += counts[k]; } console.log(total);"#,
+    r#"console.log({ 1: "one", "with space": 2, ok: 3 });"#,
+    "const rows = [{ n: 1 }, { n: 2 }]; console.log(rows.map(r => r.n));",
+    "function mutate(o) { o.x = 99; } const o = { x: 1 }; mutate(o); console.log(o.x);",
+    "console.log(typeof {}, typeof [], typeof null);",
+    // ---- M2: var semantics ----
+    "function f() { { var x = 1; } return x; } console.log(f());",
+    "function f() { console.log(later); var later = 5; } f();",
+    "const fns = []; for (var i = 0; i < 3; i++) { fns.push(() => i); } console.log(fns[0](), fns[1](), fns[2]());",
+    "const fns2 = []; for (let j = 0; j < 3; j++) { fns2.push(() => j); } console.log(fns2[0](), fns2[1](), fns2[2]());",
+    "let seen = []; for (let i = 0; i < 5; i++) { seen.push(i); i += 1; } console.log(seen.length, seen[0], seen[1], seen[2]);",
+    // ---- M2: for-in ----
+    r#"const o = { a: 1, b: 2 }; let keys = ""; for (const k in o) { keys += k; } console.log(keys);"#,
+    "const arr = [10, 20]; for (const i in arr) { console.log(typeof i, arr[i]); }",
+    r#"for (const k in 42) { console.log(k); } console.log("done");"#,
 ];
 
 #[test]

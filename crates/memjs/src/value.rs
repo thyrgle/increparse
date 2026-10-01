@@ -40,13 +40,31 @@ impl std::fmt::Debug for Func {
 pub struct Env {
     pub vars: RefCell<Vec<(String, Value, bool)>>, // name, value, is_const
     pub parent: Option<Rc<Env>>,
+    /// Function-scope frames (the global frame and call frames) are
+    /// where `var` declarations land.
+    pub is_function_scope: bool,
 }
 
 impl Env {
+    /// A function-scope frame: the target for `var` declarations.
+    pub fn function_scope(parent: Option<Rc<Env>>) -> Rc<Env> {
+        Rc::new(Env {
+            vars: RefCell::new(Vec::new()),
+            parent,
+            is_function_scope: true,
+        })
+    }
+
+    /// Whether this frame itself declares `name`.
+    pub fn declares_locally(&self, name: &str) -> bool {
+        self.vars.borrow().iter().any(|(n, _, _)| n == name)
+    }
+
     pub fn new(parent: Option<Rc<Env>>) -> Rc<Env> {
         Rc::new(Env {
             vars: RefCell::new(Vec::new()),
             parent,
+            is_function_scope: false,
         })
     }
 
@@ -115,6 +133,10 @@ pub enum SetError {
     NotFound,
 }
 
+/// An object's property list, in insertion order (JavaScript string keys
+/// preserve insertion order).
+pub type ObjMap = Vec<(String, Value)>;
+
 /// A runtime value.
 #[derive(Clone, Debug)]
 pub enum Value {
@@ -124,6 +146,7 @@ pub enum Value {
     Undefined,
     Null,
     Arr(Rc<RefCell<Vec<Value>>>),
+    Obj(Rc<RefCell<ObjMap>>),
     Func(Rc<Func>),
 }
 
@@ -135,7 +158,7 @@ impl Value {
             Value::Num(n) => *n != 0.0 && !n.is_nan(),
             Value::Str(s) => !s.is_empty(),
             Value::Undefined | Value::Null => false,
-            Value::Arr(_) | Value::Func(_) => true,
+            Value::Arr(_) | Value::Obj(_) | Value::Func(_) => true,
         }
     }
 
@@ -148,6 +171,7 @@ impl Value {
             (Value::Undefined, Value::Undefined) => true,
             (Value::Null, Value::Null) => true,
             (Value::Arr(a), Value::Arr(b)) => Rc::ptr_eq(a, b),
+            (Value::Obj(a), Value::Obj(b)) => Rc::ptr_eq(a, b),
             (Value::Func(a), Value::Func(b)) => Rc::ptr_eq(a, b),
             _ => false,
         }
@@ -170,6 +194,54 @@ impl Value {
         }
     }
 
+    /// `console.log` formatting for containers, matching Node's util
+    /// inspect for the values memjs can build: `[ 1, 'x' ]`,
+    /// `{ a: 1 }`, functions as `[Function: name]`. Strings inside
+    /// containers are quoted (double quotes only when the string
+    /// contains a single quote and no double quote). Object keys print
+    /// bare when identifier-shaped, quoted otherwise. Matches Node for
+    /// the nesting depths memjs programs reach in practice; very deep
+    /// structures print fully instead of Node's `[Array]` truncation.
+    pub fn inspect(&self) -> String {
+        match self {
+            Value::Arr(arr) => {
+                let items = arr.borrow();
+                if items.is_empty() {
+                    return "[]".into();
+                }
+                let inner: Vec<String> = items.iter().map(|v| v.inspect()).collect();
+                format!("[ {} ]", inner.join(", "))
+            }
+            Value::Obj(obj) => {
+                let entries = obj.borrow();
+                if entries.is_empty() {
+                    return "{}".into();
+                }
+                let inner: Vec<String> = entries
+                    .iter()
+                    .map(|(k, v)| {
+                        let value = match v {
+                            // Functions inside objects are named by
+                            // their key, as Node does.
+                            Value::Func(_) => format!("[Function: {k}]"),
+                            other => other.inspect(),
+                        };
+                        format!("{}: {}", quote_key(k), value)
+                    })
+                    .collect();
+                format!("{{ {} }}", inner.join(", "))
+            }
+            Value::Str(s) => quote_js(s),
+            Value::Func(f) => match &**f {
+                Func::Closure {
+                    name: Some(name), ..
+                } => format!("[Function: {name}]"),
+                _ => "[Function (anonymous)]".into(),
+            },
+            other => other.to_display(),
+        }
+    }
+
     /// `Number(x)` coercion per JavaScript semantics.
     pub fn to_number_value(&self) -> Value {
         Value::Num(to_number(self))
@@ -184,6 +256,7 @@ impl Value {
             Value::Undefined => "undefined".into(),
             Value::Null => "null".into(),
             Value::Arr(_) => "[object Array]".into(),
+            Value::Obj(_) => "[object Object]".into(),
             Value::Func(_) => "[function]".into(),
         }
     }
@@ -208,6 +281,51 @@ pub fn fmt_number(n: f64) -> String {
     }
 }
 
+/// Quotes a string the way Node's inspect does: single quotes unless
+/// the string contains a single quote and no double quote.
+fn quote_js(s: &str) -> String {
+    let quote = if s.contains('\'') && !s.contains('"') {
+        '"'
+    } else {
+        '\''
+    };
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push(quote);
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            c if c == quote => {
+                out.push('\\');
+                out.push(c);
+            }
+            c => out.push(c),
+        }
+    }
+    out.push(quote);
+    out
+}
+
+/// Object keys print bare when identifier-shaped, quoted otherwise
+/// (numeric-ish and spaced keys get quotes, as Node prints them).
+fn quote_key(key: &str) -> String {
+    let ident_shaped = !key.is_empty()
+        && key
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '$')
+        && key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+    if ident_shaped {
+        key.to_string()
+    } else {
+        quote_js(key)
+    }
+}
+
 fn to_number(v: &Value) -> f64 {
     match v {
         Value::Num(n) => *n,
@@ -221,6 +339,6 @@ fn to_number(v: &Value) -> f64 {
         Value::Null => 0.0,
         Value::Undefined => f64::NAN,
         Value::Str(s) => s.trim().parse::<f64>().unwrap_or(f64::NAN),
-        Value::Arr(_) | Value::Func(_) => f64::NAN,
+        Value::Arr(_) | Value::Obj(_) | Value::Func(_) => f64::NAN,
     }
 }

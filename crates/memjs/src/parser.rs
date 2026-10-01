@@ -162,9 +162,15 @@ impl<'s> Parser<'s> {
             }
             Tok::LBrace => Ok(Stmt::Block(self.parse_block()?)),
             Tok::Let | Tok::Const => {
-                let stmt = self.parse_let_decl()?;
+                let is_const = self.peek() == &Tok::Const;
+                let decls = self.parse_declarators(is_const)?;
                 self.expect(&Tok::Semi)?;
-                Ok(stmt)
+                Ok(Stmt::Let { is_const, decls })
+            }
+            Tok::Var => {
+                let decls = self.parse_declarators(false)?;
+                self.expect(&Tok::Semi)?;
+                Ok(Stmt::Var { decls })
             }
             Tok::If => {
                 self.bump();
@@ -190,31 +196,48 @@ impl<'s> Parser<'s> {
             Tok::For => {
                 self.bump();
                 self.expect(&Tok::LParen)?;
-                // for (let/const x of iter)
-                let for_of = matches!(self.peek(), Tok::Let | Tok::Const)
-                    && matches!(self.peek_at(2), Tok::Of);
-                if for_of {
+                // for (let/const/var x of iter) and for (let/const/var k in obj)
+                let declared = matches!(self.peek(), Tok::Let | Tok::Const | Tok::Var)
+                    && matches!(self.peek_at(2), Tok::Of | Tok::In);
+                if declared {
                     let is_const = self.peek() == &Tok::Const;
-                    self.bump();
+                    self.bump(); // the keyword
                     let name = self.ident()?;
-                    self.expect(&Tok::Of)?;
+                    let is_in = self.peek() == &Tok::In;
+                    self.bump(); // of | in
                     let iterable = self.parse_expr()?;
                     self.expect(&Tok::RParen)?;
                     let body = self.parse_statement()?;
-                    return Ok(Stmt::ForOf {
-                        name,
-                        is_const,
-                        iterable,
-                        body: Box::new(body),
-                    });
+                    return if is_in {
+                        Ok(Stmt::ForIn {
+                            name,
+                            is_const,
+                            iterable,
+                            body: Box::new(body),
+                        })
+                    } else {
+                        Ok(Stmt::ForOf {
+                            name,
+                            is_const,
+                            iterable,
+                            body: Box::new(body),
+                        })
+                    };
                 }
                 let init = if self.eat(&Tok::Semi) {
                     None
                 } else {
-                    let stmt = if matches!(self.peek(), Tok::Let | Tok::Const) {
-                        self.parse_let_decl()?
-                    } else {
-                        Stmt::Expr(self.parse_expr()?)
+                    let stmt = match self.peek() {
+                        Tok::Let | Tok::Const => {
+                            let is_const = self.peek() == &Tok::Const;
+                            let decls = self.parse_declarators(is_const)?;
+                            Stmt::Let { is_const, decls }
+                        }
+                        Tok::Var => {
+                            let decls = self.parse_declarators(false)?;
+                            Stmt::Var { decls }
+                        }
+                        _ => Stmt::Expr(self.parse_expr()?),
                     };
                     self.expect(&Tok::Semi)?;
                     Some(Box::new(stmt))
@@ -271,11 +294,10 @@ impl<'s> Parser<'s> {
         }
     }
 
-    /// Parses `let`/`const` without the trailing semicolon — shared by
-    /// statement position and the `for` header.
-    fn parse_let_decl(&mut self) -> PResult<Stmt> {
-        let is_const = self.peek() == &Tok::Const;
-        self.bump();
+    /// Parses the declarator list of `let`/`const`/`var` — no trailing
+    /// semicolon. Shared by statement position and the `for` header.
+    fn parse_declarators(&mut self, is_const: bool) -> PResult<Vec<(String, Option<Expr>)>> {
+        self.bump(); // the keyword
         let mut decls = Vec::new();
         loop {
             let name = self.ident()?;
@@ -292,7 +314,7 @@ impl<'s> Parser<'s> {
                 break;
             }
         }
-        Ok(Stmt::Let { is_const, decls })
+        Ok(decls)
     }
 
     pub fn parse_block(&mut self) -> PResult<Vec<Stmt>> {
@@ -615,6 +637,44 @@ impl<'s> Parser<'s> {
                 let expr = self.parse_expr()?;
                 self.expect(&Tok::RParen)?;
                 Ok(expr)
+            }
+            Tok::LBrace => {
+                self.bump();
+                let mut entries = Vec::new();
+                if !matches!(self.peek(), Tok::RBrace) {
+                    loop {
+                        let key = match self.peek().clone() {
+                            Tok::Ident(k) | Tok::Str(k) => {
+                                self.bump();
+                                k
+                            }
+                            Tok::Num(n) => {
+                                self.bump();
+                                crate::value::fmt_number(n)
+                            }
+                            other => {
+                                return Err(
+                                    self.err(format!("expected object key, found {other:?}"))
+                                )
+                            }
+                        };
+                        if self.eat(&Tok::Colon) {
+                            let value = self.parse_assignment()?;
+                            entries.push(ObjEntry { key, value });
+                        } else {
+                            // Shorthand: `{ a }` is `{ a: a }`.
+                            entries.push(ObjEntry {
+                                key: key.clone(),
+                                value: Expr::Ident(key),
+                            });
+                        }
+                        if !self.eat(&Tok::Comma) {
+                            break;
+                        }
+                    }
+                }
+                self.expect(&Tok::RBrace)?;
+                Ok(Expr::Obj(entries))
             }
             Tok::LBracket => {
                 self.bump();

@@ -15,6 +15,7 @@ pub enum Tok {
     // keywords
     Let,
     Const,
+    Var,
     Function,
     Return,
     If,
@@ -22,6 +23,7 @@ pub enum Tok {
     While,
     For,
     Of,
+    In,
     Break,
     Continue,
     True,
@@ -185,6 +187,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                 let kind = match word {
                     "let" => Tok::Let,
                     "const" => Tok::Const,
+                    "var" => Tok::Var,
                     "function" => Tok::Function,
                     "return" => Tok::Return,
                     "if" => Tok::If,
@@ -192,6 +195,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                     "while" => Tok::While,
                     "for" => Tok::For,
                     "of" => Tok::Of,
+                    "in" => Tok::In,
                     "break" => Tok::Break,
                     "continue" => Tok::Continue,
                     "true" => Tok::True,

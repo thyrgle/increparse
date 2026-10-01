@@ -231,6 +231,144 @@ fn runtime_errors() {
 }
 
 #[test]
+fn objects() {
+    assert_eq!(
+        eval(
+            r#"const o = { a: 1, b: "two" };
+               console.log(o.a, o.b, o.missing);
+               o.c = 3;
+               console.log(o.c, o["a"]);"#
+        ),
+        "1 two undefined\n3 1\n"
+    );
+    assert_eq!(
+        eval(
+            r#"const o = {};
+               o["computed key"] = 1;
+               o[2] = "two";
+               console.log(o["computed key"], o[2], o.gone);"#
+        ),
+        "1 two undefined\n"
+    );
+    // Shorthand, mixed keys, nesting.
+    assert_eq!(
+        eval(
+            r#"const a = 1;
+               const o = { a, b: { c: [1, 2] } };
+               console.log(o.a, o.b.c[1]);"#
+        ),
+        "1 2\n"
+    );
+    // Objects are reference values.
+    assert_eq!(
+        eval(
+            "function mutate(o) { o.x = 99; }
+             const o = { x: 1 };
+             mutate(o);
+             console.log(o.x);"
+        ),
+        "99\n"
+    );
+    // Objects passed to methods survive as callback results.
+    assert_eq!(
+        eval(
+            r#"const rows = [{ n: 1 }, { n: 2 }];
+               const names = rows.map(r => r.n);
+               console.log(names[0], names[1]);"#
+        ),
+        "1 2\n"
+    );
+}
+
+#[test]
+fn var_hoisting_and_function_scope() {
+    // var is function-scoped: visible after its block.
+    assert_eq!(
+        eval(
+            "function f() {
+               { var x = 1; }
+               return x;
+             }
+             console.log(f());"
+        ),
+        "1\n"
+    );
+    // var hoists: usable (undefined) before its statement runs.
+    assert_eq!(
+        eval(
+            "function f() {
+               console.log(later);
+               var later = 5;
+             }
+             f();"
+        ),
+        "undefined\n"
+    );
+    // let stays block-scoped.
+    assert_eq!(
+        eval_err(
+            "function f() {
+               { let y = 1; }
+               return y;
+             }
+             f();"
+        ),
+        "y is not defined"
+    );
+    // Closures over a shared var binding.
+    assert_eq!(
+        eval(
+            "const fns = [];
+             for (var i = 0; i < 3; i++) { fns.push(() => i); }
+             console.log(fns[0](), fns[1](), fns[2]());"
+        ),
+        "3 3 3\n"
+    );
+    // Closures over per-iteration let bindings.
+    assert_eq!(
+        eval(
+            "const fns = [];
+             for (let i = 0; i < 3; i++) { fns.push(() => i); }
+             console.log(fns[0](), fns[1](), fns[2]());"
+        ),
+        "0 1 2\n"
+    );
+    // Body mutations of a let loop variable affect the loop.
+    assert_eq!(
+        eval(
+            "let seen = [];
+             for (let i = 0; i < 5; i++) { seen.push(i); i += 1; }
+             console.log(seen.length, seen[0], seen[1], seen[2]);"
+        ),
+        "3 0 2 4\n"
+    );
+}
+
+#[test]
+fn for_in() {
+    assert_eq!(
+        eval(
+            r#"const o = { a: 1, b: 2 };
+               let keys = "";
+               for (const k in o) { keys += k; }
+               console.log(keys);"#
+        ),
+        "ab\n"
+    );
+    // Arrays iterate index strings.
+    assert_eq!(
+        eval(
+            "const a = [10, 20];
+             for (const i in a) { console.log(typeof i, a[i]); }"
+        ),
+        "string 10\nstring 20\n"
+    );
+    // Non-objects iterate nothing, without error.
+    assert_eq!(eval("for (const k in 42) { console.log(k); }"), "");
+    assert_eq!(eval("for (const k in null) { console.log(k); }"), "");
+}
+
+#[test]
 fn parse_diagnostics_are_reported() {
     let mut out = Vec::new();
     let errors = memjs::run("let ok = 1; console.log(ok); let = 2;", &mut out).unwrap();
