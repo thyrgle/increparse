@@ -19,7 +19,7 @@
 //! assert_eq!(String::from_utf8(out).unwrap(), "3\n");
 //! ```
 //!
-//! # The M1+M2 subset
+//! # The M1+M2 subset, plus the M3 memory layer
 //!
 //! `let` / `const` / `var` (with JavaScript's scoping and hoisting
 //! semantics: `var` is function-scoped, `let` loop variables get
@@ -33,13 +33,21 @@
 //! `console.log` formats containers the way Node does, and the test
 //! suite verifies every fixture against Node byte for byte.
 //!
-//! Divergences from JavaScript are documented in [`interp`]; the
-//! roadmap — `@own` / `@ref` memory annotations, then annotation
-//! inference — is in the workspace README.
+//! On top sits the gradual-memory layer ([`mem`]): `// @own` comments
+//! allocate arrays and objects into the current activation's arena —
+//! dropped deterministically on return, never on the reference-counted
+//! heap — with enforced moves and read-only `// @ref` borrows. Annotated
+//! programs are still 100% valid JavaScript, and the Node differential
+//! covers them too.
+//!
+//! Divergences from JavaScript are documented in [`interp`] and
+//! [`mem`]; the roadmap — annotation inference — is in the workspace
+//! README.
 
 pub mod ast;
 pub mod interp;
 pub mod lexer;
+pub mod mem;
 pub mod parser;
 pub mod passes;
 pub mod transpile;

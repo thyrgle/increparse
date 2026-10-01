@@ -147,6 +147,12 @@ pub enum Value {
     Null,
     Arr(Rc<RefCell<Vec<Value>>>),
     Obj(Rc<RefCell<ObjMap>>),
+    /// An `@own` value: a handle into an activation arena. `readonly`
+    /// marks borrows reached through `@ref` bindings.
+    Own(crate::mem::OwnHandle),
+    /// The previous owner of a moved `@own` value. Reading it is a
+    /// use-after-move error.
+    Moved,
     Func(Rc<Func>),
 }
 
@@ -157,8 +163,8 @@ impl Value {
             Value::Bool(b) => *b,
             Value::Num(n) => *n != 0.0 && !n.is_nan(),
             Value::Str(s) => !s.is_empty(),
-            Value::Undefined | Value::Null => false,
-            Value::Arr(_) | Value::Obj(_) | Value::Func(_) => true,
+            Value::Undefined | Value::Null | Value::Moved => false,
+            Value::Arr(_) | Value::Obj(_) | Value::Own(_) | Value::Func(_) => true,
         }
     }
 
@@ -172,6 +178,7 @@ impl Value {
             (Value::Null, Value::Null) => true,
             (Value::Arr(a), Value::Arr(b)) => Rc::ptr_eq(a, b),
             (Value::Obj(a), Value::Obj(b)) => Rc::ptr_eq(a, b),
+            (Value::Own(a), Value::Own(b)) => a.arena == b.arena && a.slot == b.slot,
             (Value::Func(a), Value::Func(b)) => Rc::ptr_eq(a, b),
             _ => false,
         }
@@ -257,6 +264,8 @@ impl Value {
             Value::Null => "null".into(),
             Value::Arr(_) => "[object Array]".into(),
             Value::Obj(_) => "[object Object]".into(),
+            Value::Own(_) => "[own value]".into(),
+            Value::Moved => "[moved]".into(),
             Value::Func(_) => "[function]".into(),
         }
     }
@@ -339,6 +348,6 @@ fn to_number(v: &Value) -> f64 {
         Value::Null => 0.0,
         Value::Undefined => f64::NAN,
         Value::Str(s) => s.trim().parse::<f64>().unwrap_or(f64::NAN),
-        Value::Arr(_) | Value::Obj(_) | Value::Func(_) => f64::NAN,
+        Value::Arr(_) | Value::Obj(_) | Value::Own(_) | Value::Moved | Value::Func(_) => f64::NAN,
     }
 }

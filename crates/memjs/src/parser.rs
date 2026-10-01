@@ -6,7 +6,7 @@
 //! [`top_level_items`] drives memjs's regionization.
 
 use crate::ast::*;
-use crate::lexer::{Tok, Token};
+use crate::lexer::{Comment, Tok, Token};
 
 /// A parsing failure at an absolute byte offset.
 #[derive(Debug, Clone, PartialEq)]
@@ -40,7 +40,11 @@ impl TopItem {
 }
 
 pub struct Parser<'s> {
+    src: &'s str,
     toks: &'s [Token],
+    comments: &'s [Comment],
+    /// Index of the next unconsumed comment.
+    comment_pos: usize,
     pos: usize,
 }
 
@@ -48,8 +52,14 @@ pub struct Parser<'s> {
 /// item does not abort the program: the failing item is reported and the
 /// remainder becomes a single trailing `Stmt` item carrying the error, so
 /// diagnostics can point at one place instead of cascading.
-pub fn top_level_items(src: &str, toks: &[Token]) -> Vec<TopItem> {
-    let mut p = Parser { toks, pos: 0 };
+pub fn top_level_items(src: &str, toks: &[Token], comments: &[Comment]) -> Vec<TopItem> {
+    let mut p = Parser {
+        src,
+        toks,
+        comments,
+        comment_pos: 0,
+        pos: 0,
+    };
     let mut items = Vec::new();
     loop {
         if matches!(p.peek(), Tok::Eof) {
@@ -91,7 +101,13 @@ pub fn top_level_items(src: &str, toks: &[Token]) -> Vec<TopItem> {
 
 impl<'s> Parser<'s> {
     pub fn new(toks: &'s [Token], pos: usize) -> Self {
-        Self { toks, pos }
+        Self {
+            src: "",
+            toks,
+            comments: &[],
+            comment_pos: 0,
+            pos,
+        }
     }
 
     fn peek(&self) -> &Tok {
@@ -142,6 +158,45 @@ impl<'s> Parser<'s> {
         }
     }
 
+    /// The line number (0-based) of a byte offset.
+    fn line_of(&self, at: usize) -> usize {
+        self.src[..at.min(self.src.len())]
+            .bytes()
+            .filter(|b| *b == b'\n')
+            .count()
+    }
+
+    /// Consumes every comment that started before the current
+    /// statement, returning the last `@own`/`@ref` annotation found
+    /// among them (whole-line comments above the declaration).
+    fn take_annotations(&mut self) -> Mem {
+        let hi = self.start_offset();
+        let mut mem = Mem::Gc;
+        while self.comment_pos < self.comments.len() && self.comments[self.comment_pos].start < hi {
+            if let Some(mode) = self.comments[self.comment_pos].annotation() {
+                mem = mode;
+            }
+            self.comment_pos += 1;
+        }
+        mem
+    }
+
+    /// Consumes comments on the same line as `at` (trailing
+    /// annotations), returning the last annotation among them.
+    fn take_trailing(&mut self, at: usize) -> Mem {
+        let line = self.line_of(at);
+        let mut mem = Mem::Gc;
+        while self.comment_pos < self.comments.len()
+            && self.line_of(self.comments[self.comment_pos].start) == line
+        {
+            if let Some(mode) = self.comments[self.comment_pos].annotation() {
+                mem = mode;
+            }
+            self.comment_pos += 1;
+        }
+        mem
+    }
+
     fn ident(&mut self) -> PResult<String> {
         match self.peek().clone() {
             Tok::Ident(name) => {
@@ -162,15 +217,25 @@ impl<'s> Parser<'s> {
             }
             Tok::LBrace => Ok(Stmt::Block(self.parse_block()?)),
             Tok::Let | Tok::Const => {
+                let above = self.take_annotations();
                 let is_const = self.peek() == &Tok::Const;
                 let decls = self.parse_declarators(is_const)?;
-                self.expect(&Tok::Semi)?;
-                Ok(Stmt::Let { is_const, decls })
+                let semi = self.expect(&Tok::Semi)?;
+                let mem = self.take_trailing(semi.end);
+                let mem = if matches!(mem, Mem::Gc) { above } else { mem };
+                Ok(Stmt::Let {
+                    is_const,
+                    decls,
+                    mem,
+                })
             }
             Tok::Var => {
+                let above = self.take_annotations();
                 let decls = self.parse_declarators(false)?;
-                self.expect(&Tok::Semi)?;
-                Ok(Stmt::Var { decls })
+                let semi = self.expect(&Tok::Semi)?;
+                let mem = self.take_trailing(semi.end);
+                let mem = if matches!(mem, Mem::Gc) { above } else { mem };
+                Ok(Stmt::Var { decls, mem })
             }
             Tok::If => {
                 self.bump();
@@ -231,11 +296,18 @@ impl<'s> Parser<'s> {
                         Tok::Let | Tok::Const => {
                             let is_const = self.peek() == &Tok::Const;
                             let decls = self.parse_declarators(is_const)?;
-                            Stmt::Let { is_const, decls }
+                            Stmt::Let {
+                                is_const,
+                                decls,
+                                mem: Mem::Gc,
+                            }
                         }
                         Tok::Var => {
                             let decls = self.parse_declarators(false)?;
-                            Stmt::Var { decls }
+                            Stmt::Var {
+                                decls,
+                                mem: Mem::Gc,
+                            }
                         }
                         _ => Stmt::Expr(self.parse_expr()?),
                     };

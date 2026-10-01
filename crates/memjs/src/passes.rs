@@ -67,8 +67,8 @@ impl Pass for ItemsPass {
         if !matches!(ctx, Ctx::Root) {
             return Outcome::Done;
         }
-        let toks = match lex(source) {
-            Ok(toks) => toks,
+        let lexed = match lex(source) {
+            Ok(lexed) => lexed,
             Err(e) => {
                 return Outcome::Expand(vec![(
                     Span::new(e.at.min(span.end), span.end.max(e.at), span.rev),
@@ -76,7 +76,7 @@ impl Pass for ItemsPass {
                 )]);
             }
         };
-        let items = parser::top_level_items(source, &toks);
+        let items = parser::top_level_items(source, &lexed.tokens, &lexed.comments);
         let mut children = Vec::new();
         for item in &items {
             let (start, end) = item.span();

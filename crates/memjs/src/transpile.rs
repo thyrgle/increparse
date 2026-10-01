@@ -43,7 +43,9 @@ fn stmt_str(out: &mut String, stmt: &Stmt, level: usize) {
     indent(out, level);
     match stmt {
         Stmt::Empty => {}
-        Stmt::Let { is_const, decls } => {
+        Stmt::Let {
+            is_const, decls, ..
+        } => {
             out.push_str(if *is_const { "const " } else { "let " });
             for (i, (name, init)) in decls.iter().enumerate() {
                 if i > 0 {
@@ -117,7 +119,7 @@ fn stmt_str(out: &mut String, stmt: &Stmt, level: usize) {
             stmt_as_block(out, body, level);
             out.push('\n');
         }
-        Stmt::Var { decls } => {
+        Stmt::Var { decls, .. } => {
             out.push_str("var ");
             for (i, (name, init)) in decls.iter().enumerate() {
                 if i > 0 {
@@ -191,7 +193,9 @@ fn stmt_as_block(out: &mut String, stmt: &Stmt, level: usize) {
 
 fn stmt_inline(out: &mut String, stmt: &Stmt) {
     match stmt {
-        Stmt::Let { is_const, decls } => {
+        Stmt::Let {
+            is_const, decls, ..
+        } => {
             out.push_str(if *is_const { "const " } else { "let " });
             for (i, (name, init)) in decls.iter().enumerate() {
                 if i > 0 {

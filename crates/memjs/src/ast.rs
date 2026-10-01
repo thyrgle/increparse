@@ -90,6 +90,23 @@ pub enum Expr {
     Update(UpdateOp, bool, Target),
 }
 
+/// The memory mode of a declaration, from `// @own` / `// @ref`
+/// comment annotations. The default is [`Mem::Gc`] — ordinary
+/// garbage-collected values. Annotated programs are still valid
+/// JavaScript: the annotations are comments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Mem {
+    /// An ordinary value behind reference counting.
+    #[default]
+    Gc,
+    /// The value allocates into the current activation's arena and
+    /// declarations of this mode take ownership (moves).
+    Own,
+    /// The declaration borrows an `@own` value: read-only, cannot
+    /// outlive the activation that owns it.
+    Ref,
+}
+
 /// One `key: value` entry of an object literal. Keys are normalized to
 /// strings (identifier, string, and numeric keys all become strings, as
 /// JavaScript object keys are).
@@ -110,15 +127,19 @@ pub enum FnBody {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
     /// `let x = e, y;` / `const x = e;` — one keyword, any number of
-    /// declarators (JavaScript does not allow mixing keywords).
+    /// declarators (JavaScript does not allow mixing keywords). The
+    /// memory mode comes from `// @own` / `// @ref` annotations and
+    /// applies to every declarator in the statement.
     Let {
         is_const: bool,
         decls: Vec<(String, Option<Expr>)>,
+        mem: Mem,
     },
     /// `var x = e, y;` — function-scoped and hoisted to the function
     /// frame (unlike `let`, which is block-scoped).
     Var {
         decls: Vec<(String, Option<Expr>)>,
+        mem: Mem,
     },
     Expr(Expr),
     If(Box<Expr>, Box<Stmt>, Option<Box<Stmt>>),

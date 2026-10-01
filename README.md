@@ -196,9 +196,13 @@ It is also the working sketch of the two patterns a real compiler
 front-end needs here: parse inside the pass, analyze outside it (scope
 and cross-function checks are consumer walks over the settled tree,
 since pass context flows down but not up), and carry language payloads
-in the context (`Ctx::Fn(Arc<FnDef>)`). The roadmap: `@own`/`@ref` comment
-annotations that route values through per-activation arenas instead of
-the heap, then annotation inference.
+in the context (`Ctx::Fn(Arc<FnDef>)`). And the pilot already carries the
+gradual-memory thesis: `// @own` comments route arrays and objects
+through per-activation arenas — dropped deterministically on return,
+never on the reference-counted heap — with enforced moves and read-only
+`// @ref` borrows, while annotated programs stay 100% valid JavaScript
+(the Node differential covers them). The roadmap: annotation inference
+— most code needs no annotations at all.
 
 ## Executors and cancellation
 

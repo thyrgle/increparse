@@ -86,18 +86,58 @@ pub struct LexError {
     pub message: String,
 }
 
-pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
+/// A skipped comment, kept for the memory annotations (`// @own`,
+/// `// @ref`) that live inside them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Comment {
+    pub start: usize,
+    pub end: usize,
+    /// The text between the comment opener and end of comment, trimmed.
+    pub text: String,
+}
+
+impl Comment {
+    /// The annotation mode the comment declares, if any: the trimmed
+    /// text starts with `@own` or `@ref` (trailing prose allowed).
+    pub fn annotation(&self) -> Option<crate::ast::Mem> {
+        let text = self.text.trim();
+        if text.starts_with("@own") {
+            Some(crate::ast::Mem::Own)
+        } else if text.starts_with("@ref") {
+            Some(crate::ast::Mem::Ref)
+        } else {
+            None
+        }
+    }
+}
+
+/// The output of lexing: tokens plus the comments that were skipped.
+#[derive(Debug, Clone)]
+pub struct Lexed {
+    pub tokens: Vec<Token>,
+    pub comments: Vec<Comment>,
+}
+
+pub fn lex(source: &str) -> Result<Lexed, LexError> {
     let bytes = source.as_bytes();
     let mut tokens = Vec::new();
+    let mut comments = Vec::new();
     let mut i = 0usize;
     while i < bytes.len() {
         let b = bytes[i];
         match b {
             b' ' | b'\t' | b'\r' | b'\n' => i += 1,
             b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'/' => {
+                let start = i;
+                i += 2;
                 while i < bytes.len() && bytes[i] != b'\n' {
                     i += 1;
                 }
+                comments.push(Comment {
+                    start,
+                    end: i,
+                    text: source[start + 2..i].to_string(),
+                });
             }
             b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
                 let start = i;
@@ -112,6 +152,11 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                     });
                 }
                 i += 2;
+                comments.push(Comment {
+                    start,
+                    end: i,
+                    text: source[start + 2..i - 2].to_string(),
+                });
             }
             b'0'..=b'9' => {
                 let start = i;
@@ -227,7 +272,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
         start: bytes.len(),
         end: bytes.len(),
     });
-    Ok(tokens)
+    Ok(Lexed { tokens, comments })
 }
 
 /// Matches the longest punctuation/operator at `i`.
@@ -284,7 +329,7 @@ mod tests {
 
     #[test]
     fn lexes_basic_tokens() {
-        let toks = lex("let x = 1.5; // c\nx === 'a\\n'").unwrap();
+        let toks = lex("let x = 1.5; // c\nx === 'a\\n'").unwrap().tokens;
         let kinds: Vec<&Tok> = toks.iter().map(|t| &t.kind).collect();
         assert_eq!(
             kinds,
@@ -304,7 +349,7 @@ mod tests {
 
     #[test]
     fn spans_are_absolute() {
-        let toks = lex("ab + 1").unwrap();
+        let toks = lex("ab + 1").unwrap().tokens;
         assert_eq!((toks[0].start, toks[0].end), (0, 2));
         assert_eq!((toks[2].start, toks[2].end), (5, 6));
     }
@@ -313,5 +358,15 @@ mod tests {
     fn rejects_bad_characters() {
         assert!(lex("let @x;").is_err());
         assert!(lex("/* nope").is_err());
+    }
+
+    #[test]
+    fn records_comments_with_annotations() {
+        let lexed = lex("// @own\nlet a = [1]; // just a note").unwrap();
+        assert_eq!(lexed.comments.len(), 2);
+        assert_eq!(lexed.comments[0].annotation(), Some(crate::ast::Mem::Own));
+        assert_eq!(lexed.comments[1].annotation(), None);
+        // Line comments stop before the newline.
+        assert_eq!(lexed.comments[0].text, " @own");
     }
 }
