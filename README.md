@@ -180,7 +180,8 @@ and runs it in VS Code and Neovim.
 
 ## Compiler design
 
-memjs ([`crates/memjs`](crates/memjs)) is the compiler-design pilot: a
+memjs ([`thyrgle/memjs`](https://github.com/thyrgle/memjs) — developed
+here, now its own repository) is the compiler-design pilot: a
 JavaScript subset — closures, arrows, objects with shorthand, `var` /
 `let` / `const` with real scoping and hoisting semantics,
 `for`/`for..of`/`for..in`, arrays with `map`/`filter`, truthiness,
