@@ -178,6 +178,27 @@ in `crates/increparse-lsp/tests/server_smoke.rs`.
 — a step-by-step guide that turns MiniLang into a working language server
 and runs it in VS Code and Neovim.
 
+## Compiler design
+
+memjs ([`crates/memjs`](crates/memjs)) is the compiler-design pilot: a
+JavaScript subset — closures, arrows, arrays with `map`/`filter`,
+`for`/`for..of`, truthiness, `==` and `===` — built directly on the
+engine. One pass segments a file into top-level items and parses each
+item where it stands; the ASTs ride in the tree as contexts; a
+content-keyed cache keeps untouched items pointer-identical across
+edits, so an edit to one function re-parses only that function. A
+tree-walking interpreter executes the settled tree, and a transpiler
+prints the same AST back to JavaScript — every memjs program is checked
+against Node in the test suite, byte for byte.
+
+It is also the working sketch of the two patterns a real compiler
+front-end needs here: parse inside the pass, analyze outside it (scope
+and cross-function checks are consumer walks over the settled tree,
+since pass context flows down but not up), and carry language payloads
+in the context (`Ctx::Fn(Arc<FnDef>)`). The roadmap: objects, then
+`@own`/`@ref` comment annotations that route values through per-
+activation arenas instead of the heap, then annotation inference.
+
 ## Executors and cancellation
 
 A round's batch of nodes goes through the [`Executor`] trait:
